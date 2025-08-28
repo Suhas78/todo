@@ -1,55 +1,104 @@
-const API_URL = '/api/tasks'; // Updated endpoint
+const API_URL = "http://localhost:8081/api/tasks";
+const taskList = document.getElementById('task-list');
+const taskForm = document.getElementById('task-form');
+const titleInput = document.getElementById('task-title');
+const descInput = document.getElementById('task-desc');
+const datetimeInput = document.getElementById('task-datetime');
 
-// Fetch and display all tasks
-async function fetchTasks() {
-  const response = await fetch(API_URL);
-  const tasks = await response.json();
+// Always fetch tasks on load
+document.addEventListener('DOMContentLoaded', () => {
+  fetchTasks();
+});
 
-  const taskList = document.getElementById('taskList');
-  taskList.innerHTML = '';
-
-  tasks.forEach(task => {
-    const li = document.createElement('li');
-    li.className = task.completed ? 'completed' : '';
-    li.innerHTML = `
-      <span onclick="toggleTask(${task.id}, ${!task.completed})">${task.title}</span>
-      <button onclick="deleteTask(${task.id})">Delete</button>
-    `;
-    taskList.appendChild(li);
-  });
+function fetchTasks() {
+  fetch(API_URL)
+    .then(resp => resp.json())
+    .then(tasks => {
+      taskList.innerHTML = '';
+      tasks.forEach(task => addTaskToDOM(task));
+    })
+    .catch(err => alert("Failed to load tasks"));
 }
 
-// Add a new task
-async function addTask() {
-  const taskInput = document.getElementById('taskInput');
-  const newTask = taskInput.value.trim();
-  if (!newTask) return;
+function addTaskToDOM(task) {
+  const li = document.createElement('li');
+  li.className = 'task-item';
+  li.dataset.id = task.id;
 
-  await fetch(API_URL, {
+  li.innerHTML = `
+    <span><strong>${task.title}</strong>: ${task.description}</span>
+    <span class="task-actions">
+      <button class="edit-btn">Edit</button>
+      <button class="delete-btn">Delete</button>
+    </span>
+  `;
+  // Edit button logic
+  li.querySelector('.edit-btn').onclick = function() {
+    const newTitle = prompt("Edit title:", task.title);
+    const newDesc = prompt("Edit description:", task.description);
+    if(newTitle && newDesc){
+      fetch(`${API_URL}/${task.id}`, {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({title: newTitle, description: newDesc})
+      })
+      .then(() => fetchTasks());
+    }
+  };
+  // Delete button logic
+  li.querySelector('.delete-btn').onclick = function() {
+    fetch(`${API_URL}/${task.id}`, {method: 'DELETE'})
+      .then(() => fetchTasks());
+  };
+
+  taskList.appendChild(li);
+}
+
+// Add new task
+taskForm.onsubmit = function(e){
+  e.preventDefault();
+  const title = titleInput.value.trim();
+  const desc = descInput.value.trim();
+  const datetime = datetimeInput.value;
+
+  if(!title || !desc) return;
+  fetch(API_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: newTask, completed: false })
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({title, description: desc})
+  })
+  .then(() => {
+    titleInput.value = '';
+    descInput.value = '';
+    datetimeInput.value = '';
+    fetchTasks();
+    // Schedule popup reminder if time set
+    if(datetime) {
+      scheduleNotification(title, datetime);
+    }
   });
+};
 
-  taskInput.value = '';
-  fetchTasks();
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.style.display = 'block';
+  setTimeout(() => {
+    toast.style.display = 'none';
+  }, 3000);
 }
 
-// Toggle task completion
-async function toggleTask(id, completed) {
-  await fetch(`${API_URL}/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ completed })
-  });
-  fetchTasks();
+function scheduleNotification(taskTitle, datetimeStr) {
+  const notificationTime = new Date(datetimeStr).getTime();
+  const now = Date.now();
+  const delay = notificationTime - now;
+
+  if (delay > 0) {
+    setTimeout(() => {
+      showToast(`Reminder: ${taskTitle}`);
+    }, delay);
+  } else {
+    showToast("Time should be in the future!");
+  }
 }
 
-// Delete a task
-async function deleteTask(id) {
-  await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
-  fetchTasks();
-}
-
-// Load tasks on page load
-fetchTasks();
